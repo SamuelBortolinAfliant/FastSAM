@@ -98,8 +98,6 @@ class FastSAMPrompt:
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         original_h = image.shape[0]
         original_w = image.shape[1]
-        if sys.platform == "darwin":
-            plt.switch_backend("TkAgg")
         plt.figure(figsize=(original_w / 100, original_h / 100))
         # Add subplot with no margin.
         plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
@@ -172,9 +170,8 @@ class FastSAMPrompt:
             buf = fig.canvas.tostring_rgb()
         except AttributeError:
             fig.canvas.draw()
-            buf = fig.canvas.tostring_rgb()
-        cols, rows = fig.canvas.get_width_height()
-        img_array = np.frombuffer(buf, dtype=np.uint8).reshape(rows, cols, 3)
+            buf = np.array(fig.canvas.buffer_rgba())  # shape: (rows, cols, 4)
+        img_array = buf[:, :, :3]  # prendi solo i primi 3 canali RGB
         result = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
         plt.close()
         return result
@@ -442,6 +439,15 @@ class FastSAMPrompt:
             return []
         format_results = self._format_results(self.results[0], 0)
         cropped_boxes, cropped_images, not_crop, filter_id, annotations = self._crop_image(format_results)
+
+        try:
+            import clip
+        except ImportError:
+            import subprocess
+            subprocess.run([sys.executable, "-m", "pip", "install", "git+https://github.com/openai/CLIP.git"],
+                           check=True)
+            import clip
+
         clip_model, preprocess = clip.load('ViT-B/32', device=self.device)
         scores = self.retrieve(clip_model, preprocess, cropped_boxes, text, device=self.device)
         max_idx = scores.argsort()
